@@ -246,6 +246,8 @@ function buildDuplicatedAPI(prototype): void {
                     useDefaultSettings: boolean,
                     targetStorage: Storage,
                     customName?: string,
+                    onlyAnnotated?: boolean,
+                    customRange?: string,
                 ) {
                     const result = await PluginRegistry.apiWrapper.call(
                         this,
@@ -255,6 +257,8 @@ function buildDuplicatedAPI(prototype): void {
                         useDefaultSettings,
                         targetStorage,
                         customName,
+                        onlyAnnotated,
+                        customRange,
                     );
                     return result;
                 },
@@ -481,6 +485,8 @@ export class Session {
             useDefaultSettings: boolean,
             targetStorage: Storage,
             name?: string,
+            onlyAnnotated?: boolean,
+            customRange?: string,
         ) => Promise<string | void>;
     };
 

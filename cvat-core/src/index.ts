@@ -49,6 +49,17 @@ import {
 } from './annotations-actions/annotations-actions';
 import { BaseCollectionAction } from './annotations-actions/base-collection-action';
 import { BaseShapesAction } from './annotations-actions/base-shapes-action';
+import { DenseSegmentAction, FrameStatus, runDenseSegmentWhole } from './annotations-actions/dense-segment-action';
+import type { DenseSegmentRunConfig, FrameResult } from './annotations-actions/dense-segment-action';
+import {
+    selectForegroundContours, detectSuspiciousMask,
+    DEFAULT_FOREGROUND_FILTER,
+} from './annotations-actions/mask-validator';
+import type { ForegroundFilterConfig, ContourProperties } from './annotations-actions/mask-validator';
+import {
+    densifyContour, flatToPoints, contourToPoints, maskAreaFromRLE, validateDensifiedPolygon,
+} from './annotations-actions/dense-contour';
+import type { DensifyResult } from './annotations-actions/dense-contour';
 import {
     ArgumentError, DataError, Exception, ScriptingError, ServerError,
 } from './exceptions';
@@ -251,6 +262,7 @@ export default interface CVATCore {
         AnnotationGuide: typeof AnnotationGuide;
         BaseShapesAction: typeof BaseShapesAction;
         BaseCollectionAction: typeof BaseCollectionAction;
+        DenseSegmentAction: typeof DenseSegmentAction;
         QualityReport: typeof QualityReport;
         QualityConflict: typeof QualityConflict;
         QualitySettings: typeof QualitySettings;
@@ -273,3 +285,26 @@ export default interface CVATCore {
     };
 // eslint-disable-next-line semi
 }
+
+export type {
+    DenseSegmentRunConfig,
+    FrameResult,
+    DensifyResult,
+    ForegroundFilterConfig,
+    ContourProperties,
+};
+
+export {
+    DenseSegmentAction,
+    FrameStatus,
+    runDenseSegmentWhole,
+    densifyContour,
+    flatToPoints,
+    contourToPoints,
+    maskAreaFromRLE,
+    validateDensifiedPolygon,
+    selectForegroundContours,
+    detectSuspiciousMask,
+    DEFAULT_FOREGROUND_FILTER,
+};
+

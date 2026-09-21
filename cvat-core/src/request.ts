@@ -34,7 +34,7 @@ export class Request {
     constructor(initialData: SerializedRequest) {
         this.#id = initialData.id;
         this.#status = initialData.status as RQStatus;
-        this.#operation = initialData.operation;
+        this.#operation = initialData.operation || {};
         this.#progress = initialData.progress;
         this.#message = initialData.message;
         this.#resultUrl = initialData.result_url;
@@ -66,15 +66,16 @@ export class Request {
     }
 
     get operation(): RequestOperation {
+        const op = this.#operation || {};
         return {
-            target: this.#operation.target,
-            type: this.#operation.type,
-            format: this.#operation.format,
-            jobID: this.#operation.job_id,
-            taskID: this.#operation.task_id,
-            projectID: this.#operation.project_id,
-            functionID: this.#operation.function_id,
-            lightweight: this.#operation.lightweight,
+            target: op.target || '',
+            type: op.type || '',
+            format: op.format ?? null,
+            jobID: op.job_id ?? null,
+            taskID: op.task_id ?? null,
+            projectID: op.project_id ?? null,
+            functionID: op.function_id ?? null,
+            lightweight: op.lightweight ?? null,
         };
     }
 

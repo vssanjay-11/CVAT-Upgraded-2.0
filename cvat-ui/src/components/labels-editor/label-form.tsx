@@ -14,9 +14,12 @@ import Tag from 'antd/lib/tag';
 import Form, { FormInstance } from 'antd/lib/form';
 import Badge from 'antd/lib/badge';
 import Modal from 'antd/lib/modal';
+import Text from 'antd/lib/typography/Text';
+import Spin from 'antd/lib/spin';
+import Space from 'antd/lib/space';
 import { Store } from 'antd/lib/form/interface';
 
-import { SerializedAttribute, LabelType } from 'cvat-core-wrapper';
+import { SerializedAttribute, LabelType, getCore } from 'cvat-core-wrapper';
 import CVATTooltip from 'components/common/cvat-tooltip';
 import ColorPicker from 'components/annotation-page/standard-workspace/objects-side-bar/color-picker';
 import { ColorizeIcon } from 'icons';
@@ -44,9 +47,15 @@ interface Props {
     showLabelType?: boolean;
 }
 
+interface State {
+    modelMode: 'global' | 'custom';
+    modelTestStatus: { valid: boolean; message: string } | null;
+    testingModel: boolean;
+}
+
 type InputRef = React.ComponentRef<typeof Input>;
 
-export default class LabelForm extends React.Component<Props> {
+export default class LabelForm extends React.Component<Props, State> {
     private formRef: RefObject<FormInstance>;
     private inputNameRef: RefObject<InputRef>;
 
@@ -54,6 +63,12 @@ export default class LabelForm extends React.Component<Props> {
         super(props);
         this.formRef = React.createRef<FormInstance>();
         this.inputNameRef = React.createRef<InputRef>();
+        const initialCustomModel = Boolean(props.label?.model_path);
+        this.state = {
+            modelMode: initialCustomModel ? 'custom' : 'global',
+            modelTestStatus: null,
+            testingModel: false,
+        };
     }
 
     private focus = (): void => {
@@ -80,11 +95,13 @@ export default class LabelForm extends React.Component<Props> {
             }
         }
 
+        const customPath = values.model_path ? String(values.model_path).trim() : '';
         onSubmit({
             name: values.name,
             id: label ? label.id : idGenerator(),
             color: values.color,
             type: values.type || label?.type || LabelType.ANY,
+            model_path: this.state.modelMode === 'custom' && customPath ? customPath : null,
             attributes: (values.attributes || []).map((attribute: Store) => {
                 let attrValues: string | string[] = attribute.values;
                 if (!Array.isArray(attrValues)) {
@@ -638,7 +655,134 @@ export default class LabelForm extends React.Component<Props> {
             this.formRef.current.setFieldsValue({ attributes: convertedAttributes });
         }
 
+        if (label?.model_path) {
+            this.formRef.current?.setFieldsValue({
+                model_path: label.model_path,
+            });
+        }
+
         this.focus();
+    }
+
+    private testModel = async (): Promise<void> => {
+        const modelPath = this.formRef.current?.getFieldValue('model_path');
+        if (!modelPath || !modelPath.trim()) {
+            this.setState({
+                modelTestStatus: { valid: false, message: 'Please enter a valid .pt model file path' },
+            });
+            return;
+        }
+
+        this.setState({ testingModel: true, modelTestStatus: null });
+        try {
+            const core = getCore();
+            const res: any = await core.server.request(
+                `${core.config.backendAPI}/models/validate`,
+                {
+                    method: 'POST',
+                    data: { model_path: modelPath.trim() },
+                },
+            );
+
+            const data = res?.data !== undefined ? res.data : res;
+
+            if (data.valid) {
+                const classList = typeof data.classes === 'object' ? Object.values(data.classes).join(', ') : '';
+                this.setState({
+                    modelTestStatus: {
+                        valid: true,
+                        message: `Model loaded successfully${classList ? ` (Classes: ${classList})` : ''}`,
+                    },
+                });
+            } else {
+                this.setState({
+                    modelTestStatus: { valid: false, message: data.error || 'Failed to load model' },
+                });
+            }
+        } catch (err: any) {
+            this.setState({
+                modelTestStatus: { valid: false, message: err?.message || 'Server error while validating model' },
+            });
+        } finally {
+            this.setState({ testingModel: false });
+        }
+    };
+
+    private renderModelConfig(): JSX.Element {
+        const { modelMode, modelTestStatus, testingModel } = this.state;
+
+        return (
+            <div style={{ marginTop: '10px', marginBottom: '14px', padding: '12px', background: '#fafafa', borderRadius: '4px', border: '1px solid #e8e8e8' }}>
+                <Row gutter={16} align='middle'>
+                    <Col span={7}>
+                        <Text strong style={{ display: 'block', marginBottom: '4px' }}>Segmentation Model:</Text>
+                        <Select
+                            value={modelMode}
+                            style={{ width: '100%' }}
+                            onChange={(val: 'global' | 'custom') => {
+                                this.setState({ modelMode: val, modelTestStatus: null });
+                            }}
+                        >
+                            <Select.Option value='global'>Use Global Model</Select.Option>
+                            <Select.Option value='custom'>Custom .pt Model</Select.Option>
+                        </Select>
+                    </Col>
+                    {modelMode === 'custom' && (
+                        <Col span={12}>
+                            <Text strong style={{ display: 'block', marginBottom: '4px' }}>Model File Path (.pt):</Text>
+                            <Form.Item name='model_path' noStyle>
+                                <Input
+                                    placeholder='D:\HIVE\ROOTS\CVAT_Automate\cvat\...\model.pt'
+                                    allowClear
+                                    onChange={() => this.setState({ modelTestStatus: null })}
+                                />
+                            </Form.Item>
+                        </Col>
+                    )}
+                    {modelMode === 'custom' && (
+                        <Col span={5} style={{ paddingTop: '22px' }}>
+                            <Button
+                                onClick={this.testModel}
+                                loading={testingModel}
+                                type='default'
+                            >
+                                Test Model
+                            </Button>
+                        </Col>
+                    )}
+                </Row>
+                {modelMode === 'custom' && (
+                    <Row style={{ marginTop: '8px' }}>
+                        <Col span={24}>
+                            {testingModel && (
+                                <Space>
+                                    <Spin size='small' />
+                                    <Text type='secondary'>Validating model file...</Text>
+                                </Space>
+                            )}
+                            {modelTestStatus && (
+                                <Text type={modelTestStatus.valid ? 'success' : 'danger'}>
+                                    {modelTestStatus.valid ? '✓ ' : '✗ '}
+                                    {modelTestStatus.message}
+                                </Text>
+                            )}
+                            {!testingModel && !modelTestStatus && (
+                                <Text type='secondary'>Status: Enter absolute path to .pt file and click Test Model to verify</Text>
+                            )}
+                        </Col>
+                    </Row>
+                )}
+                {modelMode === 'global' && (
+                    <Row style={{ marginTop: '4px' }}>
+                        <Col span={24}>
+                            <Text type='secondary' style={{ fontSize: '12px' }}>
+                                Default: Global YOLO11s-seg model (best.pt)
+                            </Text>
+                        </Col>
+                    </Row>
+                )}
+            </div>
+        );
     }
 
     public render(): JSX.Element {
@@ -651,6 +795,7 @@ export default class LabelForm extends React.Component<Props> {
                     name: label?.name || '',
                     type: label?.type || (isSkeleton ? LabelType.SKELETON : LabelType.ANY),
                     color: label?.color || undefined,
+                    model_path: (label as any)?.model_path || '',
                     attributes: (label?.attributes || []).map((attr) => ({
                         id: attr.id,
                         name: attr.name,
@@ -674,6 +819,11 @@ export default class LabelForm extends React.Component<Props> {
                     </Col>
                     <Col offset={1}>
                         {this.renderNewAttributeButton()}
+                    </Col>
+                </Row>
+                <Row justify='start'>
+                    <Col span={24}>
+                        {this.renderModelConfig()}
                     </Col>
                 </Row>
                 <Row justify='start' align='top'>

@@ -37,6 +37,8 @@ export default class Project {
             useDefaultSettings: boolean,
             targetStorage: Storage,
             name?: string,
+            onlyAnnotated?: boolean,
+            customRange?: string,
         ) => Promise<string | void>;
         importDataset: (
             format: string,
@@ -253,6 +255,8 @@ Object.defineProperties(
                     useDefaultSettings: Parameters<typeof Project.prototype.annotations.exportDataset>[2],
                     targetStorage: Parameters<typeof Project.prototype.annotations.exportDataset>[3],
                     customName: Parameters<typeof Project.prototype.annotations.exportDataset>[4],
+                    onlyAnnotated?: Parameters<typeof Project.prototype.annotations.exportDataset>[5],
+                    customRange?: Parameters<typeof Project.prototype.annotations.exportDataset>[6],
                 ) {
                     const result = await PluginRegistry.apiWrapper.call(
                         this,
@@ -262,6 +266,8 @@ Object.defineProperties(
                         useDefaultSettings,
                         targetStorage,
                         customName,
+                        onlyAnnotated,
+                        customRange,
                     );
                     return result;
                 },

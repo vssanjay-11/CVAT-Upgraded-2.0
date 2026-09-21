@@ -38,5 +38,6 @@
     "python.testing.cwd": "${workspaceFolder}/tests",
     "cSpell.words": [
         "crowdsourcing"
-    ]
+    ],
+    "json.schemaDownload.enable": false
 }

@@ -24,6 +24,7 @@ import AnnotationGuide from './guide';
 import { BaseAction } from './annotations-actions/base-action';
 import { BaseCollectionAction } from './annotations-actions/base-collection-action';
 import { BaseShapesAction } from './annotations-actions/base-shapes-action';
+import { DenseSegmentAction } from './annotations-actions/dense-segment-action';
 import {
     QualityConflict, QualityReport, QualityRequirement, QualitySettings,
 } from './quality';
@@ -490,6 +491,7 @@ function build(): CVATCore {
             AnnotationGuide,
             BaseShapesAction,
             BaseCollectionAction,
+            DenseSegmentAction,
             QualitySettings,
             QualityRequirement,
             QualityConflict,

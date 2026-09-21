@@ -197,6 +197,8 @@ export async function exportDataset(
     useDefaultSettings: boolean,
     targetStorage: Storage,
     name?: string,
+    onlyAnnotated?: boolean,
+    customRange?: string,
 ): Promise<string | void> {
     if (!(instance instanceof Task || instance instanceof Project || instance instanceof Job)) {
         throw new ArgumentError('A dataset can only be created from a job, task or project');
@@ -205,13 +207,13 @@ export async function exportDataset(
     let result = null;
     if (instance instanceof Task) {
         result = await serverProxy.tasks
-            .exportDataset(instance.id, format, saveImages, useDefaultSettings, targetStorage, name);
+            .exportDataset(instance.id, format, saveImages, useDefaultSettings, targetStorage, name, onlyAnnotated, customRange);
     } else if (instance instanceof Job) {
         result = await serverProxy.jobs
-            .exportDataset(instance.id, format, saveImages, useDefaultSettings, targetStorage, name);
+            .exportDataset(instance.id, format, saveImages, useDefaultSettings, targetStorage, name, onlyAnnotated, customRange);
     } else {
         result = await serverProxy.projects
-            .exportDataset(instance.id, format, saveImages, useDefaultSettings, targetStorage, name);
+            .exportDataset(instance.id, format, saveImages, useDefaultSettings, targetStorage, name, onlyAnnotated, customRange);
     }
 
     return result;

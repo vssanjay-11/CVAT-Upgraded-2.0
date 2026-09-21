@@ -26,10 +26,18 @@ export default function ConstructorViewerItem(props: ConstructorViewerItemProps)
 
     const backgroundColor = color || config.NEW_LABEL_COLOR;
     const textColor = computeTextColor(backgroundColor);
+    const modelFilename = label.model_path ? label.model_path.split(/[/\\]/).pop() : null;
 
     return (
         <div style={{ background: backgroundColor }} className='cvat-constructor-viewer-item'>
-            <Text style={{ color: textColor }}>{label.name}</Text>
+            <Text style={{ color: textColor }}>
+                {label.name}
+                {modelFilename && (
+                    <span style={{ fontSize: '11px', opacity: 0.85, marginLeft: '4px' }}>
+                        [{modelFilename}]
+                    </span>
+                )}
+            </Text>
             <CVATTooltip title='Update attributes'>
                 <span
                     style={{ color: textColor }}

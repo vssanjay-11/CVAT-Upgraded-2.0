@@ -1,0 +1,4 @@
+{
+  "backend_url": "http://localhost:7000",
+  "description": "Specify the URL of your CVAT backend server. Example: http://localhost:7000, http://localhost:8080, http://192.168.1.100:8080, or https://app.cvat.ai"
+}

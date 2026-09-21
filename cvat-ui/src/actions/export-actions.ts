@@ -89,13 +89,15 @@ export const exportDatasetAsync = (
     useDefaultSettings: boolean,
     targetStorage: Storage,
     name?: string,
+    onlyAnnotated?: boolean,
+    customRange?: string,
 ): ThunkAction => async (dispatch) => {
     const resource = saveImages ? 'dataset' : 'annotations';
     const instanceType = getInstanceType(instance);
 
     try {
         const rqID = await instance.annotations
-            .exportDataset(format, saveImages, useDefaultSettings, targetStorage, name);
+            .exportDataset(format, saveImages, useDefaultSettings, targetStorage, name, onlyAnnotated, customRange);
 
         if (rqID) {
             const result = await core.requests.listen(rqID, {
@@ -107,6 +109,14 @@ export const exportDatasetAsync = (
             dispatch(exportActions.exportDatasetSuccess(
                 instance, instanceType, format, resource, target,
             ));
+
+            if (result?.url) {
+                const downloadAnchor = window.document.getElementById('downloadAnchor') as HTMLAnchorElement;
+                if (downloadAnchor) {
+                    downloadAnchor.href = result.url;
+                    downloadAnchor.click();
+                }
+            }
         } else {
             dispatch(exportActions.exportDatasetSuccess(
                 instance, instanceType, format, resource,
@@ -170,6 +180,14 @@ export async function listenExportDatasetAsync(
         dispatch(exportActions.exportDatasetSuccess(
             instance, instanceType, format, resource, target,
         ));
+
+        if (result?.url) {
+            const downloadAnchor = window.document.getElementById('downloadAnchor') as HTMLAnchorElement;
+            if (downloadAnchor) {
+                downloadAnchor.href = result.url;
+                downloadAnchor.click();
+            }
+        }
     } catch (error) {
         dispatch(exportActions.exportDatasetFailed(instance, instanceType, format, resource, error));
     }

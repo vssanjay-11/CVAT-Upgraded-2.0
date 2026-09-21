@@ -41,7 +41,7 @@ module.exports = (env, argv = {}) => {
         console.log(`- ${entrypoint}`);
     }
 
-    const host = process.env.CVAT_UI_HOST ?? 'localhost';
+    const host = process.env.CVAT_UI_HOST ?? '0.0.0.0';
     const port = process.env.CVAT_UI_PORT ?? 3000;
     return {
         target: 'web',
@@ -67,10 +67,11 @@ module.exports = (env, argv = {}) => {
         devServer: {
             host,
             port,
+            allowedHosts: 'all',
             compress: false,
             client: {
                 overlay: false,
-                webSocketURL: 'ws://0.0.0.0:0/ws',
+                webSocketURL: 'auto://0.0.0.0:0/ws',
             },
             historyApiFallback: true,
             static: {

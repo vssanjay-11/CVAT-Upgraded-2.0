@@ -27,11 +27,13 @@ import { exportActions } from 'actions/export-actions';
 import { importActions } from 'actions/import-actions';
 import { updateJobAsync } from 'actions/jobs-actions';
 import RemoveAnnotationsConfirm, { RemoveAnnotationsConfirmProps } from './remove-annotations-confirm';
+import RangeBulkDeleteModal from './range-bulk-delete-modal';
 
 export enum Actions {
     LOAD_JOB_ANNO = 'load_job_anno',
     EXPORT_JOB_DATASET = 'export_job_dataset',
     REMOVE_ANNOTATIONS = 'remove_annotations',
+    BULK_DELETE_ANNOTATIONS = 'bulk_delete_annotations',
     RUN_ACTIONS = 'run_actions',
     OPEN_TASK = 'open_task',
     FINISH_JOB = 'finish_job',
@@ -50,6 +52,7 @@ function AnnotationMenuComponent(props: Props): JSX.Element {
     const jobInstance = useSelector((state: CombinedState) => state.annotation.job.instance as Job);
     const [jobState, setJobState] = useState(jobInstance.state);
     const [removeAnnotationsConfirmOpen, setRemoveAnnotationsConfirmOpen] = useState(false);
+    const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
     const pluginActions = usePlugins(
         (state: CombinedState) => state.plugins.components.annotationPage.menuActions.items,
         { jobInstance },
@@ -126,6 +129,12 @@ function AnnotationMenuComponent(props: Props): JSX.Element {
     }, 30]);
 
     menuItems.push([{
+        key: Actions.BULK_DELETE_ANNOTATIONS,
+        label: 'Bulk delete annotations',
+        onClick: () => setBulkDeleteModalOpen(true),
+    }, 35]);
+
+    menuItems.push([{
         key: Actions.RUN_ACTIONS,
         label: 'Run actions',
         onClick: () => {
@@ -200,6 +209,10 @@ function AnnotationMenuComponent(props: Props): JSX.Element {
                 onRemove={(removeFrom, removeUpTo, removeOnlyKeyframes) => {
                     dispatch(removeAnnotationsAsyncAction(removeFrom, removeUpTo, removeOnlyKeyframes));
                 }}
+            />
+            <RangeBulkDeleteModal
+                open={bulkDeleteModalOpen}
+                onClose={() => setBulkDeleteModalOpen(false)}
             />
             <Dropdown
                 trigger={['click']}

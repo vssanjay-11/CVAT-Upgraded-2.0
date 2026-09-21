@@ -100,6 +100,20 @@ image.cvat_canvas_shape_selection {
     stroke: white;
 }
 
+.cvat_canvas_alt_delete_selection {
+    stroke-dasharray: 4 2;
+    fill: #ff4d4f;
+    fill-opacity: 0.25;
+    stroke: #ff4d4f;
+    pointer-events: none;
+}
+
+.cvat_canvas_point_to_delete {
+    fill: #ff4d4f !important;
+    stroke: #ff4d4f !important;
+    stroke-width: 3px !important;
+}
+
 .cvat_canvas_issue_region {
     pointer-events: none;
     stroke-width: 0;

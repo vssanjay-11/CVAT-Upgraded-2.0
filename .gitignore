@@ -81,3 +81,23 @@ cvat-ui/dist
 **/!.yarn/releases
 **/!.yarn/sdks
 **/!.yarn/versions
+
+# Secret credentials
+*service-account*.json
+*client_secret*.json
+*token*.json
+*.pem
+*.key
+.env
+.env.local
+
+# Local development data & large binary datasets
+local_server_data/
+*.zip
+*.pt
+weights/
+build/
+dist/
+cvat_training_output/
+housing_cover_training/
+scratch/

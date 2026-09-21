@@ -100,6 +100,16 @@ export class CanvasViewImpl implements CanvasView, Listener {
         editHidden: Record<number, boolean>;
         sliceHidden: Record<number, boolean>;
     };
+    private altDragState: {
+        startX: number;
+        startY: number;
+        svgStartX: number;
+        svgStartY: number;
+        selectionRect: SVG.Rect | null;
+        isDragging: boolean;
+        clickedPointID: number | null;
+        clickedState: any | null;
+    } | null;
 
     private set mode(value: Mode) {
         this.controller.mode = value;
@@ -643,7 +653,7 @@ export class CanvasViewImpl implements CanvasView, Listener {
         Promise.all(objects.map((state) => {
             const [curLeft, , curRight] = state.points.slice(-4, -1);
             const image = new ImageData(
-                RLEToImageData(255, 255, 255, state.points), curRight - curLeft + 1,
+                RLEToImageData(255, 255, 255, state.points) as any, curRight - curLeft + 1,
             );
             return createImageBitmap(image);
         })).then((results) => {
@@ -1373,14 +1383,7 @@ export class CanvasViewImpl implements CanvasView, Listener {
                         }
                     }
                     if (e.altKey) {
-                        const { points } = state;
-                        if (
-                            (state.shapeType === 'polygon' && state.points.length > 6) ||
-                            (state.shapeType === 'polyline' && state.points.length > 4) ||
-                            (state.shapeType === 'points' && state.points.length > 2)
-                        ) {
-                            this.onEditDone(state, points.slice(0, pointID * 2).concat(points.slice(pointID * 2 + 2)));
-                        }
+                        return;
                     } else if (e.shiftKey) {
                         this.onEditStart(state);
                         this.editHandler.edit({
@@ -1902,6 +1905,16 @@ export class CanvasViewImpl implements CanvasView, Listener {
         if (code.includes('control')) {
             this.ctrlPressed = true;
         }
+
+        if (code.includes('escape')) {
+            if (this.altDragState) {
+                if (this.altDragState.selectionRect) {
+                    this.altDragState.selectionRect.remove();
+                }
+                this.clearAltDeletePointsHighlight();
+                this.altDragState = null;
+            }
+        }
     };
 
     private onKeyUp = (e: KeyboardEvent): void => {
@@ -1935,6 +1948,261 @@ export class CanvasViewImpl implements CanvasView, Listener {
         }
     };
 
+    private onAltMouseDown = (event: MouseEvent): void => {
+        if (event.altKey && event.button === 0) {
+            if (![Mode.IDLE, Mode.DRAG, Mode.EDIT].includes(this.mode)) {
+                return;
+            }
+
+            let clickedPointID: number | null = null;
+            let clickedState: any | null = null;
+            const target = event.target as HTMLElement;
+            if (target && target.tagName && target.tagName.toLowerCase() === 'circle') {
+                const parent = target.parentElement as HTMLElement;
+                if (parent) {
+                    clickedPointID = Array.prototype.indexOf.call(parent.children, target);
+                    if (clickedPointID !== -1 && this.activeElement.clientID !== null) {
+                        [clickedState] = this.controller.objects.filter(
+                            (_state: any): boolean => _state.clientID === this.activeElement.clientID,
+                        );
+                    }
+                }
+            }
+
+            const [svgX, svgY] = translateToSVG(this.content, [event.clientX, event.clientY]);
+            this.altDragState = {
+                startX: event.clientX,
+                startY: event.clientY,
+                svgStartX: svgX,
+                svgStartY: svgY,
+                selectionRect: null,
+                isDragging: false,
+                clickedPointID,
+                clickedState,
+            };
+
+            event.stopPropagation();
+            event.preventDefault();
+        }
+    };
+
+    private onAltMouseMove = (event: MouseEvent): void => {
+        if (!this.altDragState) return;
+
+        const dist = Math.hypot(
+            event.clientX - this.altDragState.startX,
+            event.clientY - this.altDragState.startY,
+        );
+
+        if (!this.altDragState.isDragging && dist < 4) {
+            return;
+        }
+
+        this.altDragState.isDragging = true;
+        event.stopPropagation();
+
+        const [currentSvgX, currentSvgY] = translateToSVG(this.content, [event.clientX, event.clientY]);
+        const xtl = Math.min(this.altDragState.svgStartX, currentSvgX);
+        const ytl = Math.min(this.altDragState.svgStartY, currentSvgY);
+        const xbr = Math.max(this.altDragState.svgStartX, currentSvgX);
+        const ybr = Math.max(this.altDragState.svgStartY, currentSvgY);
+        const width = xbr - xtl;
+        const height = ybr - ytl;
+
+        if (!this.altDragState.selectionRect) {
+            this.altDragState.selectionRect = this.adoptedContent
+                .rect()
+                .attr({
+                    'stroke-width': consts.BASE_STROKE_WIDTH / this.geometry.scale,
+                })
+                .addClass('cvat_canvas_alt_delete_selection');
+        }
+
+        this.altDragState.selectionRect.attr({
+            x: xtl,
+            y: ytl,
+            width,
+            height,
+        });
+
+        this.updateAltDeletePointsHighlight(xtl, ytl, xbr, ybr);
+    };
+
+    private onAltMouseUp = (event: MouseEvent): void => {
+        if (!this.altDragState) return;
+
+        const {
+            isDragging, selectionRect, clickedPointID, clickedState,
+        } = this.altDragState;
+
+        this.clearAltDeletePointsHighlight();
+
+        if (selectionRect) {
+            const bbox = selectionRect.bbox();
+            selectionRect.remove();
+            this.altDragState.selectionRect = null;
+
+            if (isDragging && bbox.width > 2 && bbox.height > 2) {
+                this.handleAltDeleteInRegion(bbox);
+                event.stopPropagation();
+            }
+        } else if (!isDragging && clickedPointID !== null && clickedState !== null) {
+            const { points } = clickedState;
+            if (
+                (clickedState.shapeType === 'polygon' && points.length > 6) ||
+                (clickedState.shapeType === 'polyline' && points.length > 4) ||
+                (clickedState.shapeType === 'points' && points.length > 2)
+            ) {
+                this.onEditDone(
+                    clickedState,
+                    points.slice(0, clickedPointID * 2).concat(points.slice(clickedPointID * 2 + 2)),
+                );
+            }
+            event.stopPropagation();
+        }
+
+        this.altDragState = null;
+    };
+
+    private updateAltDeletePointsHighlight = (svgXtl: number, svgYtl: number, svgXbr: number, svgYbr: number): void => {
+        if (this.activeElement.clientID === null) return;
+        const shape = this.svgShapes[this.activeElement.clientID];
+        const handler = shape?.remember('_selectHandler');
+        if (!handler || !handler.nested) return;
+
+        const [targetState] = this.controller.objects.filter(
+            (_state: any): boolean => _state.clientID === this.activeElement.clientID,
+        );
+        if (!targetState || !['polygon', 'polyline', 'points'].includes(targetState.shapeType)) return;
+
+        const { offset, scale } = this.controller.geometry;
+        const xtl = svgXtl - offset;
+        const ytl = svgYtl - offset;
+        const xbr = svgXbr - offset;
+        const ybr = svgYbr - offset;
+        const tol = 3 / scale;
+
+        const circles = handler.nested.children();
+        for (let i = 0; i < circles.length; i++) {
+            const circle = circles[i];
+            const px = targetState.points[i * 2];
+            const py = targetState.points[i * 2 + 1];
+            if (
+                px !== undefined && py !== undefined &&
+                px >= xtl - tol && px <= xbr + tol &&
+                py >= ytl - tol && py <= ybr + tol
+            ) {
+                circle.addClass('cvat_canvas_point_to_delete');
+            } else {
+                circle.removeClass('cvat_canvas_point_to_delete');
+            }
+        }
+    };
+
+    private clearAltDeletePointsHighlight = (): void => {
+        if (this.activeElement.clientID === null) return;
+        const shape = this.svgShapes[this.activeElement.clientID];
+        const handler = shape?.remember('_selectHandler');
+        if (!handler || !handler.nested) return;
+
+        const circles = handler.nested.children();
+        for (let i = 0; i < circles.length; i++) {
+            circles[i].removeClass('cvat_canvas_point_to_delete');
+        }
+    };
+
+    private handleAltDeleteInRegion = (bbox: { x: number; y: number; width?: number; height?: number; w?: number; h?: number }): void => {
+        const { offset, scale } = this.controller.geometry;
+        const boxW = typeof bbox.width === 'number' ? bbox.width : (bbox.w || 0);
+        const boxH = typeof bbox.height === 'number' ? bbox.height : (bbox.h || 0);
+        const xtl = bbox.x - offset;
+        const ytl = bbox.y - offset;
+        const xbr = bbox.x + boxW - offset;
+        const ybr = bbox.y + boxH - offset;
+        const tol = 3 / scale;
+
+        let targetState: any = null;
+        if (this.activeElement.clientID !== null) {
+            targetState = this.controller.objects.find(
+                (s: any) => s.clientID === this.activeElement.clientID,
+            );
+        }
+
+        if (!targetState || !['polygon', 'polyline', 'points'].includes(targetState.shapeType)) {
+            const candidates = this.controller.objects.filter(
+                (s: any) => !s.outside && !s.hidden && !this.stateIsLocked(s) &&
+                    ['polygon', 'polyline', 'points'].includes(s.shapeType),
+            );
+
+            for (const candidate of candidates) {
+                if (!candidate.points || candidate.points.length === 0) continue;
+                let hasInside = false;
+                for (let i = 0; i < candidate.points.length; i += 2) {
+                    const px = candidate.points[i];
+                    const py = candidate.points[i + 1];
+                    if (
+                        px >= xtl - tol && px <= xbr + tol &&
+                        py >= ytl - tol && py <= ybr + tol
+                    ) {
+                        hasInside = true;
+                        break;
+                    }
+                }
+                if (hasInside) {
+                    targetState = candidate;
+                    break;
+                }
+            }
+        }
+
+        if (!targetState || !targetState.points || targetState.points.length === 0) {
+            return;
+        }
+
+        const points = targetState.points;
+        const totalVertices = points.length / 2;
+        const deletedIndices = new Set<number>();
+
+        for (let i = 0; i < totalVertices; i++) {
+            const px = points[i * 2];
+            const py = points[i * 2 + 1];
+            if (
+                px >= xtl - tol && px <= xbr + tol &&
+                py >= ytl - tol && py <= ybr + tol
+            ) {
+                deletedIndices.add(i);
+            }
+        }
+
+        if (deletedIndices.size === 0) {
+            return;
+        }
+
+        const remainingCount = totalVertices - deletedIndices.size;
+        const minRequired = targetState.shapeType === 'polygon' ? 3 :
+            targetState.shapeType === 'polyline' ? 2 : 1;
+
+        if (remainingCount < minRequired) {
+            this.onWarning(
+                `Cannot delete points: a ${targetState.shapeType} must have at least ${minRequired} points remaining.`,
+                'Point Deletion',
+            );
+            return;
+        }
+
+        const newPoints: number[] = [];
+        for (let i = 0; i < totalVertices; i++) {
+            if (!deletedIndices.has(i)) {
+                newPoints.push(points[i * 2], points[i * 2 + 1]);
+            }
+        }
+
+        this.onEditDone(targetState, newPoints);
+        if (this.activeElement.clientID !== targetState.clientID) {
+            this.activate({ clientID: targetState.clientID, attributeID: null });
+        }
+    };
+
     public constructor(model: CanvasModel & Master, controller: CanvasController) {
         this.controller = controller;
         this.geometry = controller.geometry;
@@ -1963,6 +2231,7 @@ export class CanvasViewImpl implements CanvasView, Listener {
         this.isImageLoading = true;
         this.draggableShape = null;
         this.resizableShape = null;
+        this.altDragState = null;
 
         // Create HTML elements
         this.text = window.document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -2138,11 +2407,15 @@ export class CanvasViewImpl implements CanvasView, Listener {
             e.preventDefault();
         });
 
+        this.canvas.addEventListener('mousedown', this.onAltMouseDown, { capture: true });
+        window.document.addEventListener('mousemove', this.onAltMouseMove, { capture: true });
+        window.document.addEventListener('mouseup', this.onAltMouseUp, { capture: true });
+
         this.canvas.addEventListener('mousedown', (event): void => {
             if ([0, 1].includes(event.button)) {
                 if (
                     [Mode.IDLE, Mode.DRAG_CANVAS, Mode.MERGE, Mode.SPLIT]
-                        .includes(this.mode) || event.button === 1 || event.altKey
+                        .includes(this.mode) || event.button === 1 || (event.altKey && event.button !== 0)
                 ) {
                     this.controller.enableDrag(event.clientX, event.clientY);
                 }

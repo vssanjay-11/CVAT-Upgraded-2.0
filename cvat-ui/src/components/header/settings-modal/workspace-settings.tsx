@@ -10,11 +10,13 @@ import InputNumber from 'antd/lib/input-number';
 import Text from 'antd/lib/typography/Text';
 import Slider from 'antd/lib/slider';
 import Select from 'antd/lib/select';
+import Divider from 'antd/lib/divider';
 
 import {
     MAX_ACCURACY,
 } from 'components/annotation-page/standard-workspace/controls-side-bar/approximation-accuracy';
 import { clamp } from 'utils/math';
+import { DenseSegmentSettingsState } from 'reducers';
 
 interface Props {
     autoSave: boolean;
@@ -30,6 +32,7 @@ interface Props {
     textPosition: 'center' | 'auto';
     textContent: string;
     showTagsOnFrame: boolean;
+    denseSegment: DenseSegmentSettingsState;
     onSwitchAutoSave(enabled: boolean): void;
     onChangeAutoSaveInterval(interval: number): void;
     onChangeFocusedObjectPadding(padding: number): void;
@@ -43,6 +46,7 @@ interface Props {
     onChangeTextPosition(position: 'auto' | 'center'): void;
     onChangeTextContent(textContent: string[]): void;
     onSwitchShowingTagsOnFrame(enabled: boolean): void;
+    onUpdateDenseSegmentSettings(settings: Partial<DenseSegmentSettingsState>): void;
 }
 
 function WorkspaceSettingsComponent(props: Props): JSX.Element {
@@ -60,6 +64,7 @@ function WorkspaceSettingsComponent(props: Props): JSX.Element {
         textPosition,
         textContent,
         showTagsOnFrame,
+        denseSegment,
         onSwitchAutoSave,
         onChangeAutoSaveInterval,
         onChangeFocusedObjectPadding,
@@ -73,6 +78,7 @@ function WorkspaceSettingsComponent(props: Props): JSX.Element {
         onChangeTextPosition,
         onChangeTextContent,
         onSwitchShowingTagsOnFrame,
+        onUpdateDenseSegmentSettings,
     } = props;
 
     const minAutoSaveInterval = 1;
@@ -304,6 +310,115 @@ function WorkspaceSettingsComponent(props: Props): JSX.Element {
                     <Text type='secondary'>
                         Higher values preserve more polygon detail. Used for serverless interactors,
                         OpenCV scissors, and polygon simplification
+                    </Text>
+                </Col>
+            </Row>
+            <Divider orientation='left'>Dense Segmentation Defaults</Divider>
+            <Row className='cvat-workspace-settings-dense-spacing cvat-player-setting'>
+                <Col>
+                    <Text className='cvat-text-color'>Max vertex spacing </Text>
+                    <InputNumber
+                        min={0.5}
+                        max={50}
+                        step={0.5}
+                        value={denseSegment.maxVertexSpacing}
+                        onChange={(val: number | null | undefined): void => {
+                            if (typeof val === 'number') {
+                                onUpdateDenseSegmentSettings({ maxVertexSpacing: val });
+                            }
+                        }}
+                    />
+                    <Text type='secondary'> px</Text>
+                </Col>
+                <Col span={24}>
+                    <Text type='secondary'>
+                        Target maximum distance between consecutive polygon vertices in pixels for dense boundaries
+                    </Text>
+                </Col>
+            </Row>
+            <Row className='cvat-workspace-settings-dense-min-vertices cvat-player-setting'>
+                <Col>
+                    <Text className='cvat-text-color'>Minimum vertices </Text>
+                    <InputNumber
+                        min={10}
+                        max={2000}
+                        step={10}
+                        value={denseSegment.minVertices}
+                        onChange={(val: number | null | undefined): void => {
+                            if (typeof val === 'number') {
+                                onUpdateDenseSegmentSettings({ minVertices: Math.round(val) });
+                            }
+                        }}
+                    />
+                </Col>
+                <Col span={24}>
+                    <Text type='secondary'>
+                        Ensures fine-grained boundary sampling even for small or tight contours
+                    </Text>
+                </Col>
+            </Row>
+            <Row className='cvat-workspace-settings-dense-max-vertices cvat-player-setting'>
+                <Col>
+                    <Text className='cvat-text-color'>Maximum vertices </Text>
+                    <InputNumber
+                        min={100}
+                        max={20000}
+                        step={100}
+                        value={denseSegment.maxVertices}
+                        onChange={(val: number | null | undefined): void => {
+                            if (typeof val === 'number') {
+                                onUpdateDenseSegmentSettings({ maxVertices: Math.round(val) });
+                            }
+                        }}
+                    />
+                </Col>
+                <Col span={24}>
+                    <Text type='secondary'>
+                        Upper bound on polygon vertices to maintain smooth rendering and interaction performance
+                    </Text>
+                </Col>
+            </Row>
+            <Row className='cvat-workspace-settings-dense-area-mismatch cvat-player-setting'>
+                <Col>
+                    <Text className='cvat-text-color'>Max area mismatch tolerance </Text>
+                    <InputNumber
+                        min={0.1}
+                        max={50}
+                        step={0.5}
+                        value={Math.round(denseSegment.maxAreaMismatch * 1000) / 10}
+                        onChange={(val: number | null | undefined): void => {
+                            if (typeof val === 'number') {
+                                onUpdateDenseSegmentSettings({ maxAreaMismatch: val / 100 });
+                            }
+                        }}
+                    />
+                    <Text type='secondary'> %</Text>
+                </Col>
+                <Col span={24}>
+                    <Text type='secondary'>
+                        Flag polygon as needing review if polygon area deviates from mask area beyond this threshold
+                    </Text>
+                </Col>
+            </Row>
+            <Row className='cvat-workspace-settings-dense-batch-behavior cvat-player-setting'>
+                <Col span={12}>
+                    <Text className='cvat-text-color'>Default batch segmentation behavior</Text>
+                </Col>
+                <Col span={12}>
+                    <Select
+                        value={denseSegment.batchBehavior}
+                        onChange={(val: 'append' | 'replace_matching' | 'replace_all'): void => {
+                            onUpdateDenseSegmentSettings({ batchBehavior: val });
+                        }}
+                    >
+                        <Select.Option value='append'>Append to existing</Select.Option>
+                        <Select.Option value='replace_matching'>Replace matching labels</Select.Option>
+                        <Select.Option value='replace_all'>Replace all annotations</Select.Option>
+                    </Select>
+                </Col>
+                <Col span={24}>
+                    <Text type='secondary'>
+                        How multi-frame Segment Whole handles existing annotations on processed frames
                     </Text>
                 </Col>
             </Row>

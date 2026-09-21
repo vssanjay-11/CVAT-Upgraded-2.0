@@ -9,7 +9,7 @@ import { AuthActionTypes } from 'actions/auth-actions';
 import { SettingsActionTypes } from 'actions/settings-actions';
 import { AnnotationActionTypes } from 'actions/annotation-actions';
 import {
-    SettingsState, GridColor, FrameSpeed, ColorBy,
+    SettingsState, GridColor, FrameSpeed, ColorBy, DenseSegmentSettingsState,
 } from 'reducers';
 
 const defaultState: SettingsState = {
@@ -67,6 +67,15 @@ const defaultState: SettingsState = {
     },
     imageFilters: [],
     showDialog: false,
+    denseSegment: {
+        maxVertexSpacing: 2,
+        minVertices: 100,
+        maxVertices: 5000,
+        maxAreaMismatch: 0.05,
+        batchBehavior: 'append',
+        confidenceThreshold: 0.5,
+        lastModelId: '',
+    } as DenseSegmentSettingsState,
 };
 
 export default (state = defaultState, action: AnyAction): SettingsState => {
@@ -508,6 +517,15 @@ export default (state = defaultState, action: AnyAction): SettingsState => {
                 shapes: {
                     ...state.shapes,
                     showGroundTruth: false,
+                },
+            };
+        }
+        case SettingsActionTypes.UPDATE_DENSE_SEGMENT_SETTINGS: {
+            return {
+                ...state,
+                denseSegment: {
+                    ...state.denseSegment,
+                    ...action.payload.settings,
                 },
             };
         }

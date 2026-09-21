@@ -8,7 +8,7 @@ import { AnyAction } from 'redux';
 import { ThunkAction } from 'utils/redux';
 import {
     GridColor, ColorBy, SettingsState, ToolsBlockerState,
-    CombinedState,
+    CombinedState, DenseSegmentSettingsState,
 } from 'reducers';
 import { OrientationVisibility } from 'cvat-canvas3d-wrapper';
 import { SerializedImageFilter } from 'cvat-core-wrapper';
@@ -62,6 +62,7 @@ export enum SettingsActionTypes {
     DISABLE_IMAGE_FILTER = 'DISABLE_IMAGE_FILTER',
     RESET_IMAGE_FILTERS = 'RESET_IMAGE_FILTERS',
     CHANGE_SHAPES_ORIENTATION_VISIBILITY = 'CHANGE_SHAPES_ORIENTATION_VISIBILITY',
+    UPDATE_DENSE_SEGMENT_SETTINGS = 'UPDATE_DENSE_SEGMENT_SETTINGS',
 }
 
 export function changeShapesOpacity(opacity: number): AnyAction {
@@ -530,4 +531,11 @@ export function updateCachedSettings(settings: CombinedState['settings'], shortc
     };
 
     localStorage.setItem('clientSettings', JSON.stringify(settingsForSaving));
+}
+
+export function updateDenseSegmentSettings(settings: Partial<DenseSegmentSettingsState>): AnyAction {
+    return {
+        type: SettingsActionTypes.UPDATE_DENSE_SEGMENT_SETTINGS,
+        payload: { settings },
+    };
 }

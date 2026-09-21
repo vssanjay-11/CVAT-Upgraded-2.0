@@ -53,6 +53,7 @@ function TaskActionsComponent(props: Readonly<Props>): JSX.Element {
         selectedIds,
         currentTasks,
         tasksQuery,
+        user,
     } = useSelector((state: CombinedState) => ({
         activeInference: state.models.inferences[taskInstance.id],
         mergingConsensus: state.consensus.actions.merging,
@@ -60,7 +61,14 @@ function TaskActionsComponent(props: Readonly<Props>): JSX.Element {
         selectedIds: state.tasks.selected,
         currentTasks: state.tasks.current,
         tasksQuery: state.tasks.gettingQuery,
+        user: state.auth.user,
     }), shallowEqual);
+
+    const isAdmin = Boolean(
+        user?.isSuperuser ||
+        (user as any)?.role === 'ADMIN' ||
+        (user as any)?.groups?.includes('admin'),
+    );
 
     const isBulkMode = selectedIds.length > 1;
     const isExportDatasetDisabled = isBulkMode &&
@@ -273,6 +281,7 @@ function TaskActionsComponent(props: Readonly<Props>): JSX.Element {
             onRunAutoAnnotation,
             onMoveTaskToProject,
             onDeleteTask,
+            isAdmin,
             selectedIds,
             isExportDatasetDisabled,
             isQualityControlDisabled: taskInstance.dimension === DimensionType.DIMENSION_1D,

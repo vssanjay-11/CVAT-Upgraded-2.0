@@ -6494,6 +6494,9 @@ __metadata:
     redux-thunk: "npm:^2.3.0"
     rehype-sanitize: "npm:^6.0.0"
     wavesurfer.js: "npm:^7.12.5"
+    webpack: "npm:^5.104.1"
+    webpack-cli: "npm:^5.1.4"
+    webpack-dev-server: "npm:5.2.6"
   languageName: unknown
   linkType: soft
 

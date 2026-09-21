@@ -6,9 +6,10 @@ import React, { useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { shallowEqual } from 'utils/redux';
 import Dropdown from 'antd/lib/dropdown';
+import Modal from 'antd/lib/modal';
 import { MenuProps } from 'antd/lib/menu';
 import { Request, RQStatus } from 'cvat-core-wrapper';
-import { cancelRequestAsync } from 'actions/requests-async-actions';
+import { cancelRequestAsync, deleteRequestAsync, bulkDeleteRequestsAsync } from 'actions/requests-async-actions';
 import { makeBulkOperationAsync } from 'actions/bulk-actions';
 import { CombinedState } from 'reducers';
 
@@ -40,10 +41,8 @@ function RequestActionsComponent(props: Readonly<Props>): JSX.Element | null {
 
     const downloadable = (_request: Request): boolean => !!_request.url && !cancelled[_request.id];
     const cancelable = (_request: Request): boolean => {
-        const {
-            status,
-            operation: { type },
-        } = _request;
+        const status = _request?.status;
+        const type = _request?.operation?.type || '';
 
         return (
             !cancelled[_request.id] &&
@@ -90,6 +89,34 @@ function RequestActionsComponent(props: Readonly<Props>): JSX.Element | null {
         ));
     }, [requestsToAct]);
 
+    const onDelete = useCallback(() => {
+        const requestsToDelete = requestsToAct;
+
+        if (requestsToDelete.length === 0) {
+            return;
+        }
+
+        Modal.confirm({
+            title: requestsToDelete.length > 1 ?
+                `Delete ${requestsToDelete.length} selected exports?` :
+                `Delete export #${requestInstance.id}?`,
+            content: 'The export records and their files will be permanently deleted from the local server exports folder. Continue?',
+            className: 'cvat-modal-confirm-delete-request',
+            okText: 'Delete',
+            okButtonProps: {
+                type: 'primary',
+                danger: true,
+            },
+            onOk: async () => {
+                if (requestsToDelete.length > 1) {
+                    await dispatch(bulkDeleteRequestsAsync(requestsToDelete.map((r) => r.id)));
+                } else {
+                    await dispatch(deleteRequestAsync(requestsToDelete[0]));
+                }
+            },
+        });
+    }, [requestsToAct, requestInstance, dispatch]);
+
     // Helper to show count in label for bulk actions
     const queuedCount = requestsToAct.filter(cancelable).length;
     const downloadableCount = requestsToAct.filter(downloadable).length;
@@ -115,6 +142,12 @@ function RequestActionsComponent(props: Readonly<Props>): JSX.Element | null {
             onClick: onCancel,
         });
     }
+    menuItems.push({
+        key: 'delete',
+        label: withCount('Delete', requestsToAct.length),
+        onClick: onDelete,
+        danger: true,
+    });
 
     const renderedTrigger = triggerElement(menuItems);
     if (!renderedTrigger) {

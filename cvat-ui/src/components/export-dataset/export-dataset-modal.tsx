@@ -35,6 +35,8 @@ import {
 type FormValues = {
     selectedFormat: string | undefined;
     saveImages: boolean;
+    onlyAnnotated: boolean;
+    customRange: string | undefined;
     customName: string | undefined;
     targetStorage: StorageData;
     useProjectTargetStorage: boolean;
@@ -43,6 +45,8 @@ type FormValues = {
 const initialValues: FormValues = {
     selectedFormat: undefined,
     saveImages: false,
+    onlyAnnotated: true,
+    customRange: undefined,
     customName: undefined,
     targetStorage: {
         location: StorageLocation.LOCAL,
@@ -213,6 +217,8 @@ function ExportDatasetModal(props: Readonly<StateToProps>): JSX.Element {
                                     cloudStorageId: values.targetStorage?.cloudStorageId,
                                 }),
                                 exportName,
+                                values.onlyAnnotated,
+                                values.customRange,
                             ),
                         );
                     },
@@ -246,6 +252,8 @@ function ExportDatasetModal(props: Readonly<StateToProps>): JSX.Element {
                         cloudStorageId: defaultStorageCloudId,
                     }) : new Storage(targetStorage),
                     values.customName ? appendExportExtension(values.customName, exportExtension) : undefined,
+                    values.onlyAnnotated,
+                    values.customRange,
                 ),
             );
             closeModal();
@@ -345,17 +353,45 @@ function ExportDatasetModal(props: Readonly<StateToProps>): JSX.Element {
                 </Form.Item>
                 {
                     canSaveImages &&
-                    <Space>
+                    <Space style={{ marginBottom: 8 }}>
                         <Form.Item
                             className='cvat-modal-export-switch-use-default-storage'
                             name='saveImages'
                             valuePropName='checked'
+                            style={{ marginBottom: 0 }}
                         >
                             <Switch className='cvat-modal-export-save-images' />
                         </Form.Item>
                         <Text strong>Save images</Text>
                     </Space>
                 }
+                <div style={{ marginBottom: 12 }}>
+                    <Space>
+                        <Form.Item
+                            className='cvat-modal-export-switch-only-annotated'
+                            name='onlyAnnotated'
+                            valuePropName='checked'
+                            style={{ marginBottom: 0 }}
+                        >
+                            <Switch className='cvat-modal-export-only-annotated' />
+                        </Form.Item>
+                        <Text strong>Export only annotated images</Text>
+                        <Tooltip title='When enabled, images/frames without annotations are excluded from the exported dataset archive. Recommended for segmentation workflows. When disabled, all images are exported (useful for defect inspection where defectless/unannotated images must be preserved).'>
+                            <QuestionCircleOutlined />
+                        </Tooltip>
+                    </Space>
+                </div>
+                <Form.Item
+                    name='customRange'
+                    label={<Text strong>Custom image range</Text>}
+                    tooltip='Selectively export a custom range of images/frames (e.g. 0-50, 80, 100-120 or 1-50). Leave empty to export the whole dataset.'
+                    style={{ marginBottom: 12 }}
+                >
+                    <Input
+                        placeholder='e.g. 0-50, 80, 100-120'
+                        className='cvat-modal-export-custom-range-input'
+                    />
+                </Form.Item>
                 {isBulkMode ? (
                     <Form.Item label={<Text strong>Name template</Text>} required>
                         <Input

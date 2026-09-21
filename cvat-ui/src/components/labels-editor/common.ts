@@ -13,7 +13,7 @@ export interface SkeletonConfiguration {
     sublabels: SerializedLabel[];
 }
 
-export type LabelOptColor = SerializedLabel;
+export type LabelOptColor = SerializedLabel & { model_path?: string | null };
 
 const core = getCore();
 let id = 0;

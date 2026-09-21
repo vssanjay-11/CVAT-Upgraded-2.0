@@ -47,6 +47,7 @@ type Params = {
     filename?: string,
     action?: string,
     save_images?: boolean,
+    only_annotated?: boolean,
     import_mode?: 'replace' | 'append',
 };
 
@@ -1040,6 +1041,8 @@ function exportDataset(instanceType: 'projects' | 'jobs' | 'tasks') {
         useDefaultSettings: boolean,
         targetStorage: Storage,
         name?: string,
+        onlyAnnotated?: boolean,
+        customRange?: string,
     ) {
         const { backendAPI } = config;
         const baseURL = `${backendAPI}/${instanceType}/${id}/dataset/export`;
@@ -1049,6 +1052,8 @@ function exportDataset(instanceType: 'projects' | 'jobs' | 'tasks') {
             ...(name ? { filename: name } : {}),
             format,
             save_images: saveImages,
+            ...(onlyAnnotated !== undefined ? { only_annotated: onlyAnnotated } : {}),
+            ...(customRange ? { frame_range: customRange } : {}),
         };
         return new Promise<string | void>((resolve, reject) => {
             async function request() {

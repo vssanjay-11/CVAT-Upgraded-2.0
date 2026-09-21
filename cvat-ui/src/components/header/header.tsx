@@ -22,12 +22,16 @@ import {
     TeamOutlined,
     PlusOutlined,
     MailOutlined,
+    DashboardOutlined,
+    HistoryOutlined,
 } from '@ant-design/icons';
 import Layout from 'antd/lib/layout';
 import Button from 'antd/lib/button';
 import Dropdown from 'antd/lib/dropdown';
 import Modal from 'antd/lib/modal';
 import Text from 'antd/lib/typography/Text';
+import Avatar from 'antd/lib/avatar';
+import Tag from 'antd/lib/tag';
 
 import config from 'config';
 
@@ -361,6 +365,30 @@ function HeaderComponent(props: Props): JSX.Element {
         ],
     }, 20]);
 
+    const isAdmin = Boolean(user && (user.role === 'ADMIN' || user.isSuperuser));
+
+    if (isAdmin) {
+        menuItems.push([{
+            key: 'admin_dashboard',
+            icon: <DashboardOutlined />,
+            onClick: () => history.push('/admin/activity'),
+            label: 'Admin Dashboard',
+        }, 22]);
+        menuItems.push([{
+            key: 'all_activity',
+            icon: <HistoryOutlined />,
+            onClick: () => history.push('/admin/activity'),
+            label: 'Activity Logs',
+        }, 24]);
+    } else {
+        menuItems.push([{
+            key: 'my_activity',
+            icon: <HistoryOutlined />,
+            onClick: () => history.push('/activity/me'),
+            label: 'My Activity',
+        }, 22]);
+    }
+
     menuItems.push([{
         key: 'settings',
         icon: <SettingOutlined />,
@@ -534,13 +562,29 @@ function HeaderComponent(props: Props): JSX.Element {
                         }
                     }}
                 >
-                    <span>
-                        <UserOutlined className='cvat-header-dropdown-icon' />
-                        <Row>
-                            <Col span={24}>
-                                <Text strong className='cvat-header-menu-user-dropdown-user'>
-                                    {user.username.length > 14 ? `${user.username.slice(0, 10)} ...` : user.username}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                        {user.avatarUrl ? (
+                            <Avatar src={user.avatarUrl} size={28} />
+                        ) : (
+                            <Avatar icon={<UserOutlined />} size={28} style={{ backgroundColor: '#1890ff' }} />
+                        )}
+                        <Row style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center' }}>
+                            <Col span={24} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Text strong className='cvat-header-menu-user-dropdown-user' style={{ fontSize: 13, lineHeight: '16px' }}>
+                                    {(user.displayName || user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username)}
                                 </Text>
+                                <Tag
+                                    color={isAdmin ? 'gold' : 'blue'}
+                                    style={{
+                                        fontSize: 10,
+                                        padding: '0 5px',
+                                        lineHeight: '16px',
+                                        borderRadius: '4px',
+                                        margin: 0,
+                                    }}
+                                >
+                                    {isAdmin ? 'Admin' : 'Annotator'}
+                                </Tag>
                             </Col>
                             { currentOrganization ? (
                                 <Col span={24}>

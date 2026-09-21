@@ -28,6 +28,7 @@ interface MenuItemsData {
     selectedIds: number[];
     isExportDatasetDisabled: boolean;
     isQualityControlDisabled: boolean;
+    isAdmin?: boolean;
 }
 
 const bulkAllowedKeys = ['edit_assignee', 'backup_task', 'export_task_dataset', 'delete_task', 'edit_organization'];
@@ -52,6 +53,7 @@ export default function TaskActionsItems(menuItemsData: MenuItemsData, taskMenuP
         onDeleteTask,
         isExportDatasetDisabled,
         isQualityControlDisabled,
+        isAdmin,
     } = menuItemsData;
 
     const isBulkMode = selectedIds.length > 1;
@@ -154,12 +156,14 @@ export default function TaskActionsItems(menuItemsData: MenuItemsData, taskMenuP
         }, 100]);
     }
 
-    menuItems.push([{
-        key: 'delete_task',
-        onClick: onDeleteTask,
-        label: withCount('Delete', 'delete_task'),
-        disabled: isDisabled('delete_task'),
-    }, 110]);
+    if (isAdmin) {
+        menuItems.push([{
+            key: 'delete_task',
+            onClick: onDeleteTask,
+            label: withCount('Delete', 'delete_task'),
+            disabled: isDisabled('delete_task'),
+        }, 110]);
+    }
 
     menuItems.push(
         ...pluginActions.map(({ component: Component, weight }, index) => {

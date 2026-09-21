@@ -11,7 +11,9 @@ import { listenExportBackupAsync, listenExportDatasetAsync } from './export-acti
 import {
     RequestInstanceType, listen, requestsActions,
 } from './requests-actions';
+import notification from 'antd/lib/notification';
 import { listenImportBackupAsync, listenImportDatasetAsync } from './import-actions';
+import { selectionActions } from './selection-actions';
 
 const core = getCore();
 
@@ -100,6 +102,52 @@ export function cancelRequestAsync(request: Request): ThunkAction {
             dispatch(requestsActions.cancelRequestSuccess(request));
         } catch (error) {
             dispatch(requestsActions.cancelRequestFailed(request, error));
+        }
+    };
+}
+
+export function deleteRequestAsync(request: Request): ThunkAction {
+    return async (dispatch, getState): Promise<void> => {
+        try {
+            await core.server.request(`/api/requests/${request.id}`, {
+                method: 'DELETE',
+            });
+            dispatch(requestsActions.deleteRequestSuccess(request.id));
+            const { query, requests } = getState().requests;
+            const remainingCount = Math.max(0, Object.keys(requests).length - 1);
+            const pageSize = query.pageSize || 10;
+            const maxPage = Math.max(1, Math.ceil(remainingCount / pageSize));
+            const targetPage = Math.min(query.page || 1, maxPage);
+            await dispatch(getRequestsAsync({ ...query, page: targetPage }));
+        } catch (error) {
+            notification.error({
+                message: 'Could not delete export',
+                description: error instanceof Error ? error.message : String(error),
+            });
+        }
+    };
+}
+
+export function bulkDeleteRequestsAsync(requestIds: string[]): ThunkAction {
+    return async (dispatch, getState): Promise<void> => {
+        try {
+            await core.server.request('/api/requests/bulk-delete', {
+                method: 'POST',
+                data: { ids: requestIds },
+            });
+            dispatch(requestsActions.deleteRequestsSuccess(requestIds));
+            dispatch(selectionActions.clearSelectedResources());
+            const { query, requests } = getState().requests;
+            const remainingCount = Math.max(0, Object.keys(requests).length - requestIds.length);
+            const pageSize = query.pageSize || 10;
+            const maxPage = Math.max(1, Math.ceil(remainingCount / pageSize));
+            const targetPage = Math.min(query.page || 1, maxPage);
+            await dispatch(getRequestsAsync({ ...query, page: targetPage }));
+        } catch (error) {
+            notification.error({
+                message: 'Could not delete exports',
+                description: error instanceof Error ? error.message : String(error),
+            });
         }
     };
 }

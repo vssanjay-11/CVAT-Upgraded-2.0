@@ -19,9 +19,10 @@ import {
     switchTextContent,
     switchShowingTagsOnFrame,
     switchAdaptiveZoom,
+    updateDenseSegmentSettings,
 } from 'actions/settings-actions';
 
-import { CombinedState } from 'reducers';
+import { CombinedState, DenseSegmentSettingsState } from 'reducers';
 
 import WorkspaceSettingsComponent from 'components/header/settings-modal/workspace-settings';
 
@@ -39,6 +40,7 @@ interface StateToProps {
     textPosition: 'auto' | 'center';
     textContent: string;
     showTagsOnFrame: boolean;
+    denseSegment: DenseSegmentSettingsState;
 }
 
 interface DispatchToProps {
@@ -55,10 +57,11 @@ interface DispatchToProps {
     onChangeTextPosition(position: 'auto' | 'center'): void;
     onChangeTextContent(textContent: string[]): void;
     onSwitchShowingTagsOnFrame(enabled: boolean): void;
+    onUpdateDenseSegmentSettings(settings: Partial<DenseSegmentSettingsState>): void;
 }
 
 function mapStateToProps(state: CombinedState): StateToProps {
-    const { workspace } = state.settings;
+    const { workspace, denseSegment } = state.settings;
     const {
         autoSave,
         autoSaveInterval,
@@ -89,6 +92,7 @@ function mapStateToProps(state: CombinedState): StateToProps {
         textPosition,
         textContent,
         showTagsOnFrame,
+        denseSegment,
     };
 }
 
@@ -106,6 +110,7 @@ const mapDispatchToProps: DispatchToProps = {
     onChangeTextPosition: switchTextPosition,
     onChangeTextContent: switchTextContent,
     onSwitchShowingTagsOnFrame: switchShowingTagsOnFrame,
+    onUpdateDenseSegmentSettings: updateDenseSegmentSettings,
 };
 
 function WorkspaceSettingsContainer(props: StateToProps & DispatchToProps): JSX.Element {

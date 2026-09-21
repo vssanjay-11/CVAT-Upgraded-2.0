@@ -60,6 +60,25 @@ import { ImageProcessing, BaseImageFilter, SerializedImageFilter } from 'cvat-co
 import AboutData from 'cvat-core/src/about';
 import { MinimalShape, TrackerResults, InteractorResults } from 'cvat-core/src/lambda-manager';
 import { fetchAndAssembleAudio } from 'cvat-core/src/audio';
+import {
+    FrameStatus,
+    runDenseSegmentWhole,
+} from 'cvat-core/src/annotations-actions/dense-segment-action';
+import type { DenseSegmentRunConfig, FrameResult } from 'cvat-core/src/annotations-actions/dense-segment-action';
+import {
+    densifyContour,
+    flatToPoints,
+    contourToPoints,
+    validateDensifiedPolygon,
+    maskAreaFromRLE,
+} from 'cvat-core/src/annotations-actions/dense-contour';
+import type { DensifyResult } from 'cvat-core/src/annotations-actions/dense-contour';
+import {
+    selectForegroundContours,
+    detectSuspiciousMask,
+    DEFAULT_FOREGROUND_FILTER,
+} from 'cvat-core/src/annotations-actions/mask-validator';
+import type { ForegroundFilterConfig, ContourProperties } from 'cvat-core/src/annotations-actions/mask-validator';
 
 const cvat: CVATCore = _cvat;
 
@@ -144,6 +163,16 @@ export {
     AboutData,
     BaseImageFilter,
     fetchAndAssembleAudio,
+    FrameStatus,
+    runDenseSegmentWhole,
+    densifyContour,
+    flatToPoints,
+    contourToPoints,
+    validateDensifiedPolygon,
+    maskAreaFromRLE,
+    selectForegroundContours,
+    detectSuspiciousMask,
+    DEFAULT_FOREGROUND_FILTER,
 };
 
 export type {
@@ -175,4 +204,10 @@ export type {
     SerializedImageFilter,
     SerializedInterval,
     WebhookEvent,
+    DenseSegmentRunConfig,
+    FrameResult,
+    DensifyResult,
+    ForegroundFilterConfig,
+    ContourProperties,
 };
+

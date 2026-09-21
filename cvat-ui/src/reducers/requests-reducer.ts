@@ -79,6 +79,22 @@ export default function (
                     _.omit(cancelled, request.id),
             };
         }
+        case RequestsActionsTypes.DELETE_REQUEST: {
+            const { requestId } = action.payload;
+            return {
+                ...state,
+                requests: _.omit(state.requests, requestId),
+                selected: state.selected.filter((id) => id !== requestId),
+            };
+        }
+        case 'DELETE_REQUESTS_SUCCESS': {
+            const { requestIds } = action.payload;
+            return {
+                ...state,
+                requests: _.omit(state.requests, requestIds),
+                selected: state.selected.filter((id) => !requestIds.includes(id)),
+            };
+        }
         case BoundariesActionTypes.RESET_AFTER_ERROR:
         case AuthActionTypes.LOGOUT_SUCCESS: {
             return { ...defaultState };

@@ -22,6 +22,9 @@ import { Row, Col } from 'antd/lib/grid';
 import notification from 'antd/lib/notification';
 import message from 'antd/lib/message';
 import Switch from 'antd/lib/switch';
+import InputNumber from 'antd/lib/input-number';
+import Slider from 'antd/lib/slider';
+import Divider from 'antd/lib/divider';
 import lodash from 'lodash';
 
 import { AIToolsIcon } from 'icons';
@@ -29,10 +32,13 @@ import { Canvas, convertShapesForInteractor, InteractionResult } from 'cvat-canv
 import {
     getCore, Label, MLModel, ObjectState, ObjectType, ShapeType, Job,
     MinimalShape, InteractorResults, TrackerResults, DimensionType,
+    densifyContour, flatToPoints,
+    selectForegroundContours, DEFAULT_FOREGROUND_FILTER,
 } from 'cvat-core-wrapper';
 import openCVWrapper from 'utils/opencv-wrapper/opencv-wrapper';
 import {
     CombinedState, ActiveControl, ToolsBlockerState, PluginComponent,
+    DenseSegmentSettingsState,
 } from 'reducers';
 import {
     interactWithCanvas,
@@ -52,7 +58,8 @@ import CVATMarkdown from 'components/common/cvat-markdown';
 
 import ApproximationAccuracy from 'components/annotation-page/standard-workspace/controls-side-bar/approximation-accuracy';
 import ConfidenceThreshold from 'components/annotation-page/standard-workspace/controls-side-bar/confidence-threshold';
-import { switchToolsBlockerState } from 'actions/settings-actions';
+import { switchToolsBlockerState, updateDenseSegmentSettings } from 'actions/settings-actions';
+import SegmentWholeModal from './segment-whole-modal';
 import withVisibilityHandling from './handle-popover-visibility';
 import ToolsTooltips from './interactor-tooltips';
 
@@ -72,6 +79,7 @@ interface StateToProps {
     toolsBlockerState: ToolsBlockerState;
     frameData: { width: number; height: number; deleted?: boolean };
     interactorExtras: PluginComponent[];
+    denseSegmentSettings: DenseSegmentSettingsState;
 }
 
 interface DispatchToProps {
@@ -81,6 +89,7 @@ interface DispatchToProps {
     onInteractionStart: typeof interactWithCanvas;
     onSwitchToolsBlockerState: typeof switchToolsBlockerState;
     switchNavigationBlocked: typeof switchNavigationBlockedAction;
+    updateDenseSegmentSettings: typeof updateDenseSegmentSettings;
 }
 
 const MIN_SUPPORTED_INTERACTOR_VERSION = 2;
@@ -107,6 +116,7 @@ function mapStateToProps(state: CombinedState): StateToProps {
         },
         settings: {
             workspace: { toolsBlockerState, defaultApproxPolyAccuracy },
+            denseSegment: denseSegmentSettings,
         },
         plugins: {
             components: {
@@ -135,6 +145,7 @@ function mapStateToProps(state: CombinedState): StateToProps {
         toolsBlockerState,
         frameData,
         interactorExtras,
+        denseSegmentSettings,
     };
 }
 
@@ -145,6 +156,7 @@ const mapDispatchToProps = {
     fetchAnnotations: fetchAnnotationsAsync,
     onSwitchToolsBlockerState: switchToolsBlockerState,
     switchNavigationBlocked: switchNavigationBlockedAction,
+    updateDenseSegmentSettings,
 };
 
 type Props = StateToProps & DispatchToProps;
@@ -167,13 +179,18 @@ interface State {
     showConfidenceControl: boolean;
     approxPolyAccuracy: number;
     thresholdValue: number;
-    activeTab: 'detectors' | 'interactors' | 'trackers';
+    activeTab: 'detectors' | 'interactors' | 'trackers' | 'dense_segment';
     mode: 'detection' | 'interaction' | 'tracking';
     portals: React.ReactPortal[];
     allowROI: boolean;
     interactorRegionOfInterest: RegionOfInterest;
     detectorRegionOfInterest: RegionOfInterest;
     toolsPopoverVisible: boolean;
+    isDenseSegment: boolean;
+    segmentWholeModalVisible: boolean;
+    denseVertexSpacing: number;
+    denseMinVertices: number;
+    denseMaxVertices: number;
 }
 
 type DetectorResults = Extract<
@@ -285,6 +302,11 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
             interactorRegionOfInterest: null,
             detectorRegionOfInterest: null,
             toolsPopoverVisible: false,
+            isDenseSegment: false,
+            segmentWholeModalVisible: false,
+            denseVertexSpacing: props.denseSegmentSettings?.maxVertexSpacing ?? 2,
+            denseMinVertices: props.denseSegmentSettings?.minVertices ?? 100,
+            denseMaxVertices: props.denseSegmentSettings?.maxVertices ?? 5000,
         };
 
         this.interaction = {
@@ -310,7 +332,18 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
 
         canvasInstance.html().addEventListener('canvas.interacted', this.interactionListener);
         canvasInstance.html().addEventListener('canvas.canceled', this.cancelListener);
+        window.addEventListener('keydown', this.handleKeyDown);
     }
+
+    private handleKeyDown = (e: KeyboardEvent): void => {
+        if ((e.altKey && (e.key === 'w' || e.key === 'W')) || (e.ctrlKey && e.shiftKey && (e.key === 'w' || e.key === 'W'))) {
+            e.preventDefault();
+            this.setState((prev) => ({
+                segmentWholeModalVisible: !prev.segmentWholeModalVisible,
+                toolsPopoverVisible: false,
+            }));
+        }
+    };
 
     public componentDidUpdate(prevProps: Props, prevState: State): void {
         const {
@@ -318,6 +351,7 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
         } = this.props;
         const {
             approxPolyAccuracy, mode, activeTracker, thresholdValue,
+            denseVertexSpacing, denseMinVertices, denseMaxVertices,
         } = this.state;
 
         if (prevProps.states !== states || prevState.activeTracker !== activeTracker) {
@@ -338,12 +372,26 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
             window.removeEventListener('contextmenu', this.contextmenuDisabler);
 
             // hide interaction messages if exists
-            for (const messageCallback of ['closeFetchingMessage', 'noShapesMessage'] as const) {
-                if (this.interaction[messageCallback]) {
-                    this.interaction[messageCallback]?.();
-                    this.interaction[messageCallback] = null;
-                }
+            if (this.interaction.closeFetchingMessage) {
+                this.interaction.closeFetchingMessage();
+                this.interaction.closeFetchingMessage = null;
             }
+
+            if (this.interaction.noShapesMessage) {
+                this.interaction.noShapesMessage();
+                this.interaction.noShapesMessage = null;
+            }
+
+            // abort running interaction
+            this.interaction.isAborted = true;
+            this.interaction.latestRequest = null;
+            this.interaction.id = null;
+
+            this.setState({
+                approxPolyAccuracy: defaultApproxPolyAccuracy,
+                interactorResponseReceived: false,
+                showConfidenceControl: false,
+            });
         } else if (!prevProps.isActivated && isActivated) {
             // reset flags when start interaction/tracking
             this.interaction = {
@@ -378,7 +426,12 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
             }
         }
 
-        if (prevState.approxPolyAccuracy !== approxPolyAccuracy) {
+        if (
+            prevState.approxPolyAccuracy !== approxPolyAccuracy ||
+            prevState.denseVertexSpacing !== denseVertexSpacing ||
+            prevState.denseMinVertices !== denseMinVertices ||
+            prevState.denseMaxVertices !== denseMaxVertices
+        ) {
             if (isActivated && mode === 'interaction') {
                 this.interaction.latestResponse.forEach(({ points }, idx) => {
                     const approximated = this.approximateResponsePoints(points);
@@ -397,6 +450,7 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
         onRemoveAnnotations(null);
         canvasInstance.html().removeEventListener('canvas.interacted', this.interactionListener);
         canvasInstance.html().removeEventListener('canvas.canceled', this.cancelListener);
+        window.removeEventListener('keydown', this.handleKeyDown);
     }
 
     private getSupportedTrackers(): MLModel[] {
@@ -428,7 +482,7 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
         } = this.state;
         const attachmentBoard = window.document.getElementById('cvat_canvas_attachment_board');
         let regionOfInterest = null;
-        if ((activeTab === 'interactors' && toolsPopoverVisible) || (isActivated && mode === 'interaction')) {
+        if (((activeTab === 'interactors' || activeTab === 'dense_segment') && toolsPopoverVisible) || (isActivated && mode === 'interaction')) {
             regionOfInterest = interactorRegionOfInterest;
         } else if (activeTab === 'detectors' && toolsPopoverVisible) {
             regionOfInterest = detectorRegionOfInterest;
@@ -541,27 +595,58 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
 
                 const latestResponse: ToolsControlComponent['interaction']['latestResponse'] = [];
                 let showConfidenceControl = false;
+                const { frameData } = this.props;
+                const imgW = frameData?.width || 1920;
+                const imgH = frameData?.height || 1080;
+
                 for (const item of response.shapes) {
-                    if (item.type !== ShapeType.MASK) continue;
-
-                    const points = Int32Array.from(item.points);
-                    const contours = this.receiveContoursFromMask(points);
-                    const polygonPoints = this.receivePointsFromMask(contours);
-                    if (polygonPoints.length < 3) {
-                        continue;
-                    }
-
-                    const approximated = this.approximateResponsePoints(polygonPoints);
-                    const confidenceAttr = item.attributes.find((attr) => attr.spec_id === 0);
+                    const confidenceAttr = item.attributes?.find((attr: any) => attr.spec_id === 0);
                     const confidence = confidenceAttr ? +confidenceAttr.value : 1;
                     showConfidenceControl = showConfidenceControl || !!confidenceAttr;
-                    latestResponse.push({
-                        rle: points,
-                        points: polygonPoints,
-                        contours,
-                        approximatedPoints: approximated,
-                        confidence,
-                    });
+
+                    if (item.type === ShapeType.POLYGON || (item.type as any) === 'polygon') {
+                        const flat = item.points;
+                        const polyPts: [number, number][] = [];
+                        for (let i = 0; i < flat.length; i += 2) {
+                            polyPts.push([flat[i], flat[i + 1]]);
+                        }
+                        if (polyPts.length >= 3) {
+                            const approximated = this.approximateResponsePoints(polyPts);
+                            latestResponse.push({
+                                rle: new Int32Array(0),
+                                points: polyPts,
+                                contours: [polyPts],
+                                approximatedPoints: approximated,
+                                confidence,
+                            });
+                        }
+                    } else if (item.type === ShapeType.MASK || (item.type as any) === 'mask') {
+                        const points = Int32Array.from(item.points);
+                        const rawContours = this.receiveContoursFromMask(points);
+                        if (!rawContours.length) continue;
+
+                        const fgContours = selectForegroundContours(rawContours, {
+                            ...DEFAULT_FOREGROUND_FILTER,
+                            imageWidth: imgW,
+                            imageHeight: imgH,
+                        });
+
+                        const contoursToUse = fgContours.length > 0 ?
+                            fgContours.map((fg) => fg.contour) :
+                            [rawContours[0]];
+
+                        for (const cnt of contoursToUse) {
+                            if (cnt.length < 3) continue;
+                            const approximated = this.approximateResponsePoints(cnt);
+                            latestResponse.push({
+                                rle: points,
+                                points: cnt,
+                                contours: [cnt],
+                                approximatedPoints: approximated,
+                                confidence,
+                            });
+                        }
+                    }
                 }
 
                 this.interaction.latestResponse = latestResponse;
@@ -1148,6 +1233,17 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
 
     private receivePointsFromMask(contours: [number, number][][]): [number, number][] {
         if (contours.length) {
+            const { frameData } = this.props;
+            const w = frameData?.width || 1920;
+            const h = frameData?.height || 1080;
+            const foreground = selectForegroundContours(contours, {
+                ...DEFAULT_FOREGROUND_FILTER,
+                imageWidth: w,
+                imageHeight: h,
+            });
+            if (foreground.length > 0) {
+                return foreground[0].contour;
+            }
             return contours[0].map<[number, number]>((val) => [val[0], val[1]]);
         }
 
@@ -1172,7 +1268,27 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
             throw new Error('OpenCV was not initialized');
         }
 
-        const { approxPolyAccuracy } = this.state;
+        const {
+            isDenseSegment, denseVertexSpacing, denseMinVertices, denseMaxVertices, approxPolyAccuracy,
+        } = this.state;
+
+        if (isDenseSegment) {
+            if (points.length >= 3) {
+                try {
+                    const densifyResult = densifyContour(
+                        points,
+                        denseVertexSpacing,
+                        denseMinVertices,
+                        denseMaxVertices,
+                    );
+                    return flatToPoints(densifyResult.points);
+                } catch {
+                    return points;
+                }
+            }
+            return points;
+        }
+
         if (points.length > 3) {
             const threshold = openCVWrapper.utils.thresholdFromAccuracy(approxPolyAccuracy);
             return openCVWrapper.contours.approxPoly(points, threshold);
@@ -1387,7 +1503,7 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
                                 activeInteractor.version < MIN_SUPPORTED_INTERACTOR_VERSION}
                             onClick={() => {
                                 if (activeInteractor && activeLabelID && labels.length) {
-                                    this.setState({ mode: 'interaction' });
+                                    this.setState({ mode: 'interaction', isDenseSegment: false });
                                     canvasInstance.cancel();
                                     const startWithBox = activeInteractor.params.canvas.startWithBoxOptional ? (
                                         startInteractingWithBox
@@ -1411,6 +1527,169 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
                             }}
                         >
                             Interact
+                        </Button>
+                    </Col>
+                </Row>
+            </>
+        );
+    }
+
+    private renderDenseSegmentBlock(): JSX.Element {
+        const {
+            interactors, canvasInstance, labels, onInteractionStart,
+        } = this.props;
+        const {
+            activeInteractor, activeLabelID, fetching, allowROI,
+            denseVertexSpacing, denseMinVertices, denseMaxVertices,
+        } = this.state;
+
+        if (!interactors.length) {
+            return (
+                <Row justify='center' align='middle' style={{ marginTop: '5px' }}>
+                    <Col>
+                        <Text type='warning' className='cvat-text-color'>
+                            No available interactors found
+                        </Text>
+                    </Col>
+                </Row>
+            );
+        }
+
+        const selectedInteractor = activeInteractor || interactors[0];
+
+        return (
+            <>
+                <Row justify='start'>
+                    <Col>
+                        <Text className='cvat-text-color'>Segmentation Model</Text>
+                    </Col>
+                </Row>
+                <Row align='middle' justify='space-between'>
+                    <Col span={24}>
+                        <Select
+                            style={{ width: '100%' }}
+                            value={selectedInteractor.id}
+                            onChange={this.setActiveInteractor}
+                        >
+                            {interactors.map(
+                                (interactor: MLModel): JSX.Element => (
+                                    <Select.Option
+                                        value={interactor.id}
+                                        title={interactor.description}
+                                        key={interactor.id}
+                                    >
+                                        {interactor.name}
+                                    </Select.Option>
+                                ),
+                            )}
+                        </Select>
+                    </Col>
+                </Row>
+                <div className='cvat-tools-interactor-setups' style={{ marginTop: '8px' }}>
+                    {allowROI && this.renderROIControls()}
+                    <Row gutter={[8, 8]} align='middle' style={{ marginTop: '8px' }}>
+                        <Col span={14}>
+                            <Text>Max Vertex Spacing:</Text>
+                        </Col>
+                        <Col span={10}>
+                            <InputNumber
+                                min={0.5}
+                                max={50}
+                                step={0.5}
+                                size='small'
+                                value={denseVertexSpacing}
+                                addonAfter='px'
+                                onChange={(val) => {
+                                    if (val) this.setState({ denseVertexSpacing: val });
+                                }}
+                                style={{ width: '100%' }}
+                            />
+                        </Col>
+                    </Row>
+                    <Row gutter={[8, 8]} align='middle' style={{ marginTop: '4px' }}>
+                        <Col span={14}>
+                            <Text>Min Vertices:</Text>
+                        </Col>
+                        <Col span={10}>
+                            <InputNumber
+                                min={3}
+                                max={1000}
+                                size='small'
+                                value={denseMinVertices}
+                                onChange={(val) => {
+                                    if (val) this.setState({ denseMinVertices: val });
+                                }}
+                                style={{ width: '100%' }}
+                            />
+                        </Col>
+                    </Row>
+                    <Row gutter={[8, 8]} align='middle' style={{ marginTop: '4px' }}>
+                        <Col span={14}>
+                            <Text>Max Vertices (cap):</Text>
+                        </Col>
+                        <Col span={10}>
+                            <InputNumber
+                                min={100}
+                                max={100000}
+                                size='small'
+                                value={denseMaxVertices}
+                                onChange={(val) => {
+                                    if (val) this.setState({ denseMaxVertices: val });
+                                }}
+                                style={{ width: '100%' }}
+                            />
+                        </Col>
+                    </Row>
+                </div>
+                <Row align='middle' justify='space-between' style={{ marginTop: '14px' }}>
+                    <Col>
+                        <Button
+                            onClick={() => {
+                                this.setState({
+                                    segmentWholeModalVisible: true,
+                                    toolsPopoverVisible: false,
+                                });
+                            }}
+                        >
+                            Segment Whole...
+                        </Button>
+                    </Col>
+                    <Col>
+                        <Button
+                            type='primary'
+                            loading={fetching}
+                            className='cvat-tools-interact-button'
+                            disabled={
+                                !selectedInteractor ||
+                                fetching ||
+                                selectedInteractor.version < MIN_SUPPORTED_INTERACTOR_VERSION
+                            }
+                            onClick={() => {
+                                if (selectedInteractor && activeLabelID && labels.length) {
+                                    this.setState({
+                                        mode: 'interaction',
+                                        isDenseSegment: true,
+                                        convertMasksToPolygons: true,
+                                    });
+                                    canvasInstance.cancel();
+                                    const parameters = {
+                                        command: 'draw_points' as const,
+                                        settings: {
+                                            appendCursorPositionAsPoint: false,
+                                            removalStrategy: 'any' as const,
+                                            points_type: 'any' as const,
+                                            crosshair: false,
+                                            ...(this.state.interactorRegionOfInterest ? {
+                                                regionOfInterest: this.state.interactorRegionOfInterest,
+                                            } : {}),
+                                        },
+                                    };
+                                    canvasInstance.interact({ enabled: true, ...parameters });
+                                    onInteractionStart(selectedInteractor, activeLabelID, parameters);
+                                }
+                            }}
+                        >
+                            Dense Segment
                         </Button>
                     </Col>
                 </Row>
@@ -1541,7 +1820,7 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
                     type='card'
                     tabBarGutter={8}
                     activeKey={this.state.activeTab}
-                    onChange={(key) => this.setState({ activeTab: key as 'interactors' | 'detectors' | 'trackers' })}
+                    onChange={(key) => this.setState({ activeTab: key as 'interactors' | 'detectors' | 'trackers' | 'dense_segment' })}
                     items={[{
                         key: 'interactors',
                         label: 'Interactors',
@@ -1549,6 +1828,15 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
                             <>
                                 {this.renderLabelBlock()}
                                 {this.renderInteractorBlock()}
+                            </>
+                        ),
+                    }, {
+                        key: 'dense_segment',
+                        label: 'Dense Segment',
+                        children: (
+                            <>
+                                {this.renderLabelBlock()}
+                                {this.renderDenseSegmentBlock()}
                             </>
                         ),
                     }, {
@@ -1573,22 +1861,31 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
     public render(): JSX.Element | null {
         const {
             interactors, detectors, trackers, isActivated,
-            canvasInstance, labels, frameData,
+            canvasInstance, labels, frameData, jobInstance, denseSegmentSettings,
+            fetchAnnotations, updateDenseSegmentSettings: onUpdateDenseSettings,
         } = this.props;
         const {
             fetching, approxPolyAccuracy, interactorResponseReceived, thresholdValue,
             showConfidenceControl, mode, portals, convertMasksToPolygons,
+            isDenseSegment, denseVertexSpacing, segmentWholeModalVisible,
+            toolsPopoverVisible,
         } = this.state;
 
-        if (![...interactors, ...detectors, ...trackers].length) return null;
+        if (![...interactors, ...detectors, ...trackers].length && !denseSegmentSettings) return null;
 
-        const dynamicPopoverProps = isActivated ?
+        const isPopoverHidden = isActivated || segmentWholeModalVisible;
+        const dynamicPopoverProps = isPopoverHidden ?
             {
                 overlayStyle: {
                     display: 'none',
                 },
+                open: false,
+                visible: false,
             } :
-            {};
+            {
+                open: toolsPopoverVisible,
+                visible: toolsPopoverVisible,
+            };
 
         const dynamicIconProps = isActivated ?
             {
@@ -1607,13 +1904,34 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
 
         const interactionContent: JSX.Element | null = showInteractionContent ? (
             <>
-                { convertMasksToPolygons && (
-                    <ApproximationAccuracy
-                        approxPolyAccuracy={approxPolyAccuracy}
-                        onChange={(value: number) => {
-                            this.setState({ approxPolyAccuracy: value });
-                        }}
-                    />
+                { isDenseSegment ? (
+                    <div className='cvat-approximation-accuracy' style={{ padding: '4px 8px', background: 'rgba(0,0,0,0.6)', borderRadius: '4px', marginBottom: '8px' }}>
+                        <Row justify='space-around' align='middle'>
+                            <Col span={10}>
+                                <Text strong style={{ color: '#fff' }}>Spacing: {denseVertexSpacing}px</Text>
+                            </Col>
+                            <Col span={14}>
+                                <Slider
+                                    min={0.5}
+                                    max={20}
+                                    step={0.5}
+                                    value={denseVertexSpacing}
+                                    onChange={(value: number) => {
+                                        this.setState({ denseVertexSpacing: value });
+                                    }}
+                                />
+                            </Col>
+                        </Row>
+                    </div>
+                ) : (
+                    convertMasksToPolygons && (
+                        <ApproximationAccuracy
+                            approxPolyAccuracy={approxPolyAccuracy}
+                            onChange={(value: number) => {
+                                this.setState({ approxPolyAccuracy: value });
+                            }}
+                        />
+                    )
                 )}
                 { showConfidenceControl && (
                     <ConfidenceThreshold
@@ -1647,6 +1965,7 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
                     {...dynamicPopoverProps}
                     placement='right'
                     content={this.renderPopoverContent()}
+                    onOpenChange={(visible: boolean) => this.setState({ toolsPopoverVisible: visible })}
                     onVisibleChange={(visible: boolean) => this.setState({ toolsPopoverVisible: visible })}
                 >
                     <Icon {...dynamicIconProps} component={AIToolsIcon} />
@@ -1654,6 +1973,16 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
                 {interactionContent}
                 {detectionContent}
                 {portals}
+                <SegmentWholeModal
+                    visible={segmentWholeModalVisible}
+                    jobInstance={jobInstance}
+                    labels={labels}
+                    interactors={interactors}
+                    denseSettings={denseSegmentSettings}
+                    onClose={() => this.setState({ segmentWholeModalVisible: false })}
+                    onFetchAnnotations={fetchAnnotations}
+                    onUpdateSettings={onUpdateDenseSettings}
+                />
             </>
         ) : (
             <Icon className=' cvat-tools-control cvat-disabled-canvas-control' component={AIToolsIcon} />

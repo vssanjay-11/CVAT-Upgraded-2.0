@@ -1660,6 +1660,7 @@ export function pasteShapeAsync(): ThunkAction {
     };
 }
 
+
 export function interactWithCanvas(
     activeInteractor: MLModel | OpenCVTool,
     activeLabelID: number,

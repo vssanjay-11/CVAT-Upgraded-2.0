@@ -56,6 +56,12 @@ export const requestsActions = {
     cancelRequestFailed: (request: Request, error: any) => createAction(
         RequestsActionsTypes.CANCEL_REQUEST_FAILED, { request, error },
     ),
+    deleteRequestSuccess: (requestId: string) => createAction(
+        RequestsActionsTypes.DELETE_REQUEST, { requestId },
+    ),
+    deleteRequestsSuccess: (requestIds: string[]) => createAction(
+        'DELETE_REQUESTS_SUCCESS', { requestIds },
+    ),
 };
 
 export type RequestsActions = ActionUnion<typeof requestsActions>;

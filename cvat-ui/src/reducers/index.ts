@@ -1091,6 +1091,30 @@ export interface WorkspaceSettingsState {
     showTagsOnFrame: boolean;
 }
 
+export interface DenseSegmentSettingsState {
+    /** Maximum distance between consecutive polygon vertices in pixels. */
+    maxVertexSpacing: number;
+    /** Minimum number of vertices in the output polygon. */
+    minVertices: number;
+    /** Maximum number of vertices (cap for large objects). */
+    maxVertices: number;
+    /**
+     * Maximum acceptable fractional area mismatch between the AI mask
+     * and the densified polygon. Shape will be flagged NEEDS_REVIEW if exceeded.
+     * Value in [0, 1], e.g. 0.05 = 5%.
+     */
+    maxAreaMismatch: number;
+    /** How to handle pre-existing annotations when running Segment Whole. */
+    batchBehavior: 'append' | 'replace_matching' | 'replace_all';
+    /**
+     * Confidence threshold for accepting AI model output masks.
+     * Masks with lower confidence are discarded.
+     */
+    confidenceThreshold: number;
+    /** ID of the last-used interactor model. Persisted for convenience. */
+    lastModelId: string;
+}
+
 export interface ShapesSettingsState {
     colorBy: ColorBy;
     opacity: number;
@@ -1109,6 +1133,7 @@ export interface SettingsState {
     player: PlayerSettingsState;
     imageFilters: ImageFilter[];
     showDialog: boolean;
+    denseSegment: DenseSegmentSettingsState;
 }
 
 export interface ShortcutsState {
