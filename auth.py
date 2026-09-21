@@ -58,6 +58,11 @@ ADMIN_GOOGLE_EMAIL = os.environ.get("ADMIN_GOOGLE_EMAIL", "sanjay@gmail.com").st
 # Default session duration: 7 days
 SESSION_DURATION_SECONDS = 7 * 24 * 60 * 60
 
+# AUTH_MODE controls how role is assigned on first Google login:
+#   SINGLE_ADMIN  — only ADMIN_GOOGLE_EMAIL gets ADMIN; everyone else is USER
+#   GLOBAL_ADMIN  — ALL Google-authenticated users receive ADMIN role (trusted internal deployment)
+AUTH_MODE = os.environ.get("AUTH_MODE", "SINGLE_ADMIN").strip().upper()
+
 GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo"
@@ -79,6 +84,7 @@ def get_oauth_config_status() -> dict:
         "client_id_present": bool(cid),
         "client_secret_present": bool(csec),
         "admin_bootstrap_configured": bool(admin_email),
+        "auth_mode": os.environ.get("AUTH_MODE", AUTH_MODE).strip().upper(),
     }
 
 
@@ -289,8 +295,17 @@ def get_or_create_google_user(user_info: dict, db: dict) -> dict:
         matched_user["last_activity_at"] = now_iso
         matched_user["is_active"] = True
 
-        # Enforce server-side ADMIN bootstrap if configured
-        if is_admin_email and matched_user.get("role") != "ADMIN":
+        # Enforce server-side ADMIN bootstrap
+        _auth_mode = os.environ.get("AUTH_MODE", AUTH_MODE).strip().upper()
+        if _auth_mode == "GLOBAL_ADMIN":
+            # In GLOBAL_ADMIN mode: all authenticated Google users are promoted to ADMIN
+            if matched_user.get("role") != "ADMIN":
+                matched_user["role"] = "ADMIN"
+                matched_user["is_staff"] = True
+                matched_user["is_superuser"] = True
+                matched_user["groups"] = ["admin"]
+                print(f"[+] AUTH_MODE=GLOBAL_ADMIN: promoted {email} to ADMIN", flush=True)
+        elif is_admin_email and matched_user.get("role") != "ADMIN":
             matched_user["role"] = "ADMIN"
             matched_user["is_staff"] = True
             matched_user["is_superuser"] = True
@@ -302,7 +317,11 @@ def get_or_create_google_user(user_info: dict, db: dict) -> dict:
     new_uid = db["next_user_id"]
     db["next_user_id"] += 1
 
-    role = "ADMIN" if is_admin_email else "USER"
+    _auth_mode = os.environ.get("AUTH_MODE", AUTH_MODE).strip().upper()
+    if _auth_mode == "GLOBAL_ADMIN":
+        role = "ADMIN"   # All Google-authed users are ADMIN in global deployment
+    else:
+        role = "ADMIN" if is_admin_email else "USER"
     parts = display_name.split(" ", 1)
     first_name = parts[0]
     last_name = parts[1] if len(parts) > 1 else ""
