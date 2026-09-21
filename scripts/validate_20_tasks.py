@@ -6,16 +6,18 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='repla
 """
 scripts/validate_20_tasks.py
 ============================
-ROOTS Platform — Validation / Dry-Run for 20-Task Split.
+ROOTS Platform -- Validation / Dry-Run for 20-Task Split.
 
+Images go to GOOGLE DRIVE -- not local D: drive.
 Checks WITHOUT writing any files:
 1. Source directory exists and has enough images
 2. Deterministic sort order is reproducible
 3. No duplicate filenames in selection
-4. All 25,000 indices covered exactly once (0–24999)
+4. All 25,000 indices covered exactly once (0-24999)
 5. Task 5 and Task 10 integrity in current db.json
 6. Starting IDs don't collide with protected tasks
-7. Prints per-task assignment table
+7. Google Drive connectivity (credentials + root folder accessible)
+8. Prints per-task assignment table
 
 Usage:
     python scripts/validate_20_tasks.py [--source G:\\A_50] [--limit 25000]
@@ -29,6 +31,8 @@ from pathlib import Path
 from collections import Counter
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
 DB_FILE = PROJECT_ROOT / "local_server_data" / "db.json"
 TASKS_DIR = PROJECT_ROOT / "local_server_data" / "tasks"
 
@@ -182,6 +186,30 @@ def validate(source: Path, limit: int) -> bool:
         jid = next_jid_print + (n - 1)
         nm = task_name_for(n)
         print(f"{n:>3}  {tid:>7}  {jid:>6}  {nm:<35}  {batch[0].name:<50}  {batch[-1].name}")
+
+    # ── Check 7: Google Drive connectivity
+    print()
+    try:
+        from google_drive_storage import GoogleDriveStorageService
+        drive_svc = GoogleDriveStorageService()
+        if drive_svc.is_configured():
+            # Try listing root folder to confirm access
+            try:
+                result = drive_svc.service.files().get(
+                    fileId="1NRmlelgPqA61sEpK6AyyYg_eSIE-LdZD",
+                    fields="id, name",
+                    supportsAllDrives=True
+                ).execute()
+                print(f"[OK] Google Drive connected. Root folder: '{result.get('name')}' (ID: {result.get('id')})")
+            except Exception as de:
+                warnings.append(f"Drive root folder check failed: {de}")
+        else:
+            warnings.append("Google Drive credentials NOT found (token.json missing and no service account). "
+                           "Images cannot be uploaded. Run gcloud auth application-default login first.")
+    except ImportError:
+        warnings.append("google-api-python-client not installed -- Drive upload will fail.")
+    except Exception as e:
+        warnings.append(f"Drive check error: {e}")
 
     # ── Summary
     print()
